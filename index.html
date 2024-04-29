@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>SwiftStat - 阅读速度统计</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        #text-input {
+            width: 100%;
+            height: 200px;
+            margin-bottom: 10px;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        .start-button {}
+
+        .stop-button {}
+
+        .pause-button {}
+
+        .cancel-button {}
+
+        #history {
+            margin-top: 20px;
+        }
+
+        #history-list {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        #history-list li {
+            margin-bottom: 5px;
+        }
+
+        #chart {
+            width: 100%;
+            height: 300px;
+            margin-top: 20px;
+        }
+
+        .export-button {}
+
+        .clear-button {}
+    </style>
+</head>
+
+<body>
+    <h1>SwiftStat - 阅读速度统计</h1>
+
+    <textarea id="text-input" placeholder="请输入要阅读的文本"></textarea>
+
+    <button class="button start-button" onclick="startReading()">开始阅读</button>
+    <button class="button stop-button" onclick="stopReading()" disabled>停止阅读</button>
+    <button class="button pause-button" onclick="pauseReading()" disabled>暂停</button>
+    <button class="button cancel-button" onclick="cancelReading()" disabled>取消</button>
+
+    <div id="history">
+        <h2>历史统计</h2>
+        <ul id="history-list"></ul>
+        <button class="button export-button" onclick="exportData()">导出数据</button>
+        <button class="button clear-button" onclick="clearData()">清空数据</button>
+        <button class="button clear-last-button" onclick="clearLastData()">清除最后一条</button>
+    </div>
+
+    <canvas id="chart"></canvas>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let startTime;
+        let endTime;
+        let pauseTime;
+        let pauseDuration = 0;
+        let intervalId;
+        let readingInProgress = false;
+
+        function startReading() {
+            if (!readingInProgress) {
+                startTime = new Date();
+                readingInProgress = true;
+                document.querySelector('.start-button').disabled = true;
+                document.querySelector('.stop-button').disabled = false;
+                document.querySelector('.pause-button').disabled = false;
+                document.querySelector('.cancel-button').disabled = false;
+            }
+        }
+
+        function stopReading() {
+            if (readingInProgress) {
+                endTime = new Date();
+                readingInProgress = false;
+                document.querySelector('.start-button').disabled = false;
+                document.querySelector('.stop-button').disabled = true;
+                document.querySelector('.pause-button').disabled = true;
+                document.querySelector('.cancel-button').disabled = true;
+                saveReadingData();
+                updateChart();
+            }
+        }
+
+        function pauseReading() {
+            if (readingInProgress) {
+                if (!pauseTime) {
+                    pauseTime = new Date();
+                    document.querySelector('.pause-button').textContent = '继续';
+                } else {
+                    const currentTime = new Date();
+                    pauseDuration += currentTime - pauseTime;
+                    pauseTime = null;
+                    document.querySelector('.pause-button').textContent = '暂停';
+                }
+            }
+        }
+
+        function cancelReading() {
+            if (readingInProgress) {
+                readingInProgress = false;
+                document.querySelector('.start-button').disabled = false;
+                document.querySelector('.stop-button').disabled = true;
+                document.querySelector('.pause-button').disabled = true;
+                document.querySelector('.cancel-button').disabled = true;
+                pauseTime = null;
+                pauseDuration = 0;
+                document.querySelector('.pause-button').textContent = '暂停';
+            }
+        }
+
+        function saveReadingData() {
+            const text = document.getElementById('text-input').value;
+            const wordCount = countWords(text);
+            const duration = (endTime - startTime - pauseDuration) / 1000; // 持续时间（秒）
+            const wpm = Math.round(wordCount / (duration / 60)); // 每分钟阅读的单词数
+
+            const readingData = {
+                date: startTime.toISOString().split('T')[0],
+                wordCount: wordCount,
+                duration: duration,
+                wpm: wpm
+            };
+
+            let history = JSON.parse(localStorage.getItem('readingHistory')) || [];
+            history.push(readingData);
+            localStorage.setItem('readingHistory', JSON.stringify(history));
+
+            displayReadingHistory();
+        }
+
+        function countWords(text) {
+            // remove all non-word characters and split into an array of words
+            const t = text.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').toLowerCase().trim();
+            const words = t.split(' ');
+            if (words.length === 1 && words[0] === '') {
+                return 0;
+            }
+            console.log(words);
+            return words.length;
+        }
+
+        function displayReadingHistory() {
+            const historyList = document.getElementById('history-list');
+            historyList.innerHTML = '';
+
+            let history = JSON.parse(localStorage.getItem('readingHistory')) || [];
+
+            history.forEach(item => {
+                const listItem = document.createElement('li');
+                listItem.textContent = `日期：${item.date}，词数：${item.wordCount}，持续时间：${item.duration}秒，WPM：${item.wpm}`;
+                historyList.appendChild(listItem);
+            });
+        }
+
+        function updateChart() {
+            let history = JSON.parse(localStorage.getItem('readingHistory')) || [];
+
+            const dates = [];
+            const wpms = [];
+
+            history.forEach(item => {
+                if (!dates.includes(item.date)) {
+                    dates.push(item.date);
+                    wpms.push(item.wpm);
+                } else {
+                    const index = dates.indexOf(item.date);
+                    wpms[index] = Math.round((wpms[index] + item.wpm) / 2);
+                }
+            });
+
+            const ctx = document.getElementById('chart').getContext('2d');
+            if (window.statChart) {
+                window.statChart.destroy();
+            }
+            window.statChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'WPM',
+                        data: wpms,
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function exportData() {
+            const history = JSON.parse(localStorage.getItem('readingHistory')) || [];
+            const data = JSON.stringify(history, null, 2);
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'reading_history.json';
+            link.click();
+        }
+
+        function clearData() {
+            localStorage.removeItem('readingHistory');
+            displayReadingHistory();
+            updateChart();
+        }
+
+        function clearLastData() {
+            const history = JSON.parse(localStorage.getItem('readingHistory')) || [];
+            history.pop();
+            localStorage.setItem('readingHistory', JSON.stringify(history));
+            displayReadingHistory();
+            updateChart();
+        }
+
+        displayReadingHistory();
+        updateChart();
+    </script>
+</body>
+
+</html>
